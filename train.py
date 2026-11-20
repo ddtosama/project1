@@ -202,7 +202,7 @@ def train_2_ds(train_df: pd.DataFrame, test_df: pd.DataFrame, train_label: str, 
     st.code(classification_report(y_test, result))
     cm=confusion_matrix(y_test,result)
     acc=metrics.accuracy_score(y_test,result)
-    st.write(str(acc))
+    st.write('Accuracy : '+ str(round(float(acc)*100, 4)) + '%')
     st.code(cm)
 
 
