@@ -1,2 +1,5 @@
-/.venv
-/__pycache__
+.venv/
+__pycache__/
+CIC-IoV/
+CIC-UNSW-NB15/
+CICIDS2017/
