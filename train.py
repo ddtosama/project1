@@ -13,6 +13,7 @@ from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import SMOTE
 
 from sklearn import metrics
+import time, json, os
 
 import MTH_IDS
 
@@ -23,6 +24,14 @@ vì tiền xử lý trước cũng coi như lọt thông tin :)))
 - thay phần cross_val_predict từ predict -> predict_proba
 ý tưởng là có thêm xác suất xếp các lớp => mô hình meta quyết định tốt hơn
 """
+
+def log_json(path, record):
+    if not os.path.exists(path):
+        os.mkdir("log")
+    
+    with open(path, "a+", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + '\n')
+
 def train_1_ds(df: pd.DataFrame, label_ind: str, benign_label: str, train_rate: float):
     df = df.drop_duplicates()
 
@@ -113,7 +122,7 @@ def train_1_ds(df: pd.DataFrame, label_ind: str, benign_label: str, train_rate: 
     st.code(classification_report(y_val_bin, result2))
     cm=confusion_matrix(y_val_bin,result2)
     acc=metrics.accuracy_score(y_val_bin,result2)
-    st.write(str(acc))
+    st.write('Accuracy : '+ str(round(float(acc)*100, 4)) + '%')
     st.code(cm)
 
     results = []
@@ -153,7 +162,8 @@ def slog(x):  # log1p giữ dấu, vì CIC có giá trị âm
     return np.sign(x) * np.log1p(np.abs(x))
 
 def train_2_ds(train_df: pd.DataFrame, test_df: pd.DataFrame, train_label: str, train_benign, 
-               test_label: str, test_benign):
+               test_label: str, test_benign, record: dict):
+    start = time.perf_counter()
     train_df = train_df.drop_duplicates()
     test_df = test_df.drop_duplicates()
     
@@ -191,13 +201,14 @@ def train_2_ds(train_df: pd.DataFrame, test_df: pd.DataFrame, train_label: str, 
     small = {i: target for i in range(count.size) if i != train_benign and count[i]< target}
 
     pl = Pipeline([
-        ("under", RandomUnderSampler(sampling_strategy={train_benign: n_benign}, random_state=42)),
-        ("smote", SMOTE(sampling_strategy=small, k_neighbors=5, random_state=42)),
+        ("under", RandomUnderSampler(sampling_strategy={train_benign: n_benign}, random_state=42)), #type:ignore
+        ("smote", SMOTE(sampling_strategy=small, k_neighbors=5, random_state=42)), #type:ignore
     ])
     X_train, y_train = pl.fit_resample(X_train, y_train)
 
     model = MTH_IDS.MTH_IDS()
     model.fit(X_train, X_opt, y_train, y_opt, train_benign)
+    end = time.perf_counter()
     result = model.predict_binary(X_test, train_benign)
     st.code(classification_report(y_test, result))
     cm=confusion_matrix(y_test,result)
@@ -205,5 +216,14 @@ def train_2_ds(train_df: pd.DataFrame, test_df: pd.DataFrame, train_label: str, 
     st.write('Accuracy : '+ str(round(float(acc)*100, 4)) + '%')
     st.code(cm)
 
+    record.update({
+        "Số hàng tập train": train_df.shape[0],
+        "Số hàng tập test": test_df.shape[0],
+        "Số thuộc tính": X.shape[1],
+        "Thời gian": round(end-start, 4),
+        "Accuracy": str(round(float(acc)*100, 4)) + '%'
+    })
+
+    log_json("log/train_2_ds.jsonl", record)
 
     

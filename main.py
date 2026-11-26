@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import train as md
+from datetime import datetime
 
 ss = st.session_state
 if "setting_bool" not in ss:
@@ -67,6 +68,7 @@ if (ss.setting_bool):
 def close_setting():
     ss.setting_bool = False
 
+# nút train
 _, col_center, _ = st.columns([4, 1, 4])
 if col_center.button("Train", on_click=close_setting, use_container_width=True): 
     if ss.dataset_same:
@@ -81,4 +83,10 @@ if col_center.button("Train", on_click=close_setting, use_container_width=True):
             st.text("2 dataset không cùng số đặc trưng")
             st.text(str(ss.train_df.shape[1])+ " "+ str(ss.test_df.shape[1]))
         else:
-            md.train_2_ds(ss.train_df, ss.test_df, ss.train_label, ss.train_benign_label, ss.test_label, ss.test_benign_label)
+            record = {
+                "Thời điểm": datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+                "Tập train": ss.train_file.name,
+                "Số hàng tập train": 0,
+                "Tập test": ss.test_file.name
+            }
+            md.train_2_ds(ss.train_df, ss.test_df, ss.train_label, ss.train_benign_label, ss.test_label, ss.test_benign_label, record)
