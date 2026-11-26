@@ -26,7 +26,7 @@ vì tiền xử lý trước cũng coi như lọt thông tin :)))
 """
 
 def log_json(path, record):
-    if not os.path.exists(path):
+    if not os.path.exists("log"):
         os.mkdir("log")
     
     with open(path, "a+", encoding="utf-8") as f:
@@ -97,7 +97,7 @@ def train_1_ds(df: pd.DataFrame, label_ind: str, benign_label: str, train_rate: 
     st.write('Recall of meta: '+(str(round(float(recall), 4))))
     st.write('F1-score of meta: '+(str(round(float(fscore), 4))))
     st.code(classification_report(lb.inverse_transform(y_true),lb.inverse_transform(y_pred)))
-    cm=confusion_matrix(lb.inverse_transform(y_true),lb.inverse_transform(y_pred))
+    cm=confusion_matrix(y_true,y_pred)
     f,ax=plt.subplots(figsize=(10, 10))
     sns.heatmap(cm,annot=True,linewidth=0.5,linecolor="red",fmt=".0f",ax=ax, xticklabels=lb.classes_.tolist(), yticklabels=lb.classes_.tolist())
     plt.xlabel("y_pred")
@@ -161,8 +161,8 @@ def train_1_ds(df: pd.DataFrame, label_ind: str, benign_label: str, train_rate: 
 def slog(x):  # log1p giữ dấu, vì CIC có giá trị âm
     return np.sign(x) * np.log1p(np.abs(x))
 
-def train_2_ds(train_df: pd.DataFrame, test_df: pd.DataFrame, train_label: str, train_benign, 
-               test_label: str, test_benign, record: dict):
+def train_2_ds(train_df: pd.DataFrame, test_df: pd.DataFrame, train_label: str, train_benign: str, test_label: str, test_benign: str, 
+               record: dict, seed: int, process_fl: bool):
     start = time.perf_counter()
     train_df = train_df.drop_duplicates()
     test_df = test_df.drop_duplicates()
@@ -174,7 +174,7 @@ def train_2_ds(train_df: pd.DataFrame, test_df: pd.DataFrame, train_label: str, 
     y = lb_train.fit_transform(y)
     train_benign = lb_train.transform([train_benign])[0] #type: ignore
 
-    X_train, X_opt, y_train, y_opt = train_test_split(X.to_numpy(), y, train_size= 0.95, stratify=y)
+    X_train, X_opt, y_train, y_opt = train_test_split(X.to_numpy(), y, train_size= 0.95, stratify=y, random_state=seed)
     #X_train, X_opt = slog(X_train), slog(X_opt)
 
     mean = X_train.mean(axis = 0)
@@ -194,34 +194,41 @@ def train_2_ds(train_df: pd.DataFrame, test_df: pd.DataFrame, train_label: str, 
     std[std == 0] = 1
     X_test = (X_test-mean)/std
 
-    target = 2000
-    count = pd.Series(y_train).value_counts()
-    n_attack = sum(count) - count[train_benign] #type: ignore
-    n_benign = min(count[train_benign], 2*n_attack) #type: ignore
-    small = {i: target for i in range(count.size) if i != train_benign and count[i]< target}
-
-    pl = Pipeline([
-        ("under", RandomUnderSampler(sampling_strategy={train_benign: n_benign}, random_state=42)), #type:ignore
-        ("smote", SMOTE(sampling_strategy=small, k_neighbors=5, random_state=42)), #type:ignore
-    ])
-    X_train, y_train = pl.fit_resample(X_train, y_train)
-
-    model = MTH_IDS.MTH_IDS()
+    model = MTH_IDS.MTH_IDS(seed, process_fl)
     model.fit(X_train, X_opt, y_train, y_opt, train_benign)
     end = time.perf_counter()
     result = model.predict_binary(X_test, train_benign)
-    st.code(classification_report(y_test, result))
+
+    label_names = ['Benign', 'Attack']
+    report = classification_report(y_test, result, output_dict=True, target_names=label_names)
+    st.dataframe(pd.DataFrame(report).transpose())
     cm=confusion_matrix(y_test,result)
     acc=metrics.accuracy_score(y_test,result)
     st.write('Accuracy : '+ str(round(float(acc)*100, 4)) + '%')
-    st.code(cm)
+    f,ax=plt.subplots(figsize=(5, 5))
+    sns.heatmap(cm,annot=True,linewidth=0.5,linecolor="red",fmt=".0f",ax=ax, xticklabels=label_names, yticklabels=label_names)
+    plt.xlabel("y_pred")
+    plt.ylabel("y_true")
+    st.pyplot(f)
 
     record.update({
-        "Số hàng tập train": train_df.shape[0],
+        "Số hàng tập train": model.n_train,
         "Số hàng tập test": test_df.shape[0],
         "Số thuộc tính": X.shape[1],
+        "Smote + giảm benign lớp 1": process_fl,
+        "Smote target": 2000,
         "Thời gian": round(end-start, 4),
-        "Accuracy": str(round(float(acc)*100, 4)) + '%'
+        "Thời gian lớp 1": model.time_fl,
+        "Thời gian lớp 2": model.time_sl,
+        "Accuracy": round(float(acc)*100, 4),
+        "F1-macro": round(report.get('macro avg').get('f1-score'), 4),        #type:ignore
+        "Attack precision": round(report.get('Attack').get('precision'), 4),  #type:ignore
+        "Attack recall": round(report.get('Attack').get('recall'), 4),        #type:ignore
+        "Attack f1": round(report.get('Attack').get('f1-score'), 4),                #type:ignore
+        "True positive": int(cm[1][1]),
+        "False positive": int(cm[0][1]),
+        "False negative": int(cm[1][0]),
+        "True negative": int(cm[0][0])
     })
 
     log_json("log/train_2_ds.jsonl", record)
